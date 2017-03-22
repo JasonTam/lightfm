@@ -1423,6 +1423,76 @@ def calculate_auc_from_rank(CSRMatrix ranks,
                 auc[user_id] /= num_positives
 
 
+def compute_user_representations_all(
+                                CSRMatrix user_features,
+                                int[::1] user_ids,
+                                flt[:, ::1] representations,
+                                FastLightFM lightfm,
+                                int num_threads):
+    """
+    Computes the representations of all users.
+    Last dim is the bias
+    """
+
+    cdef int i, factor_dim, n_users
+    cdef flt *user_repr
+
+    n_users = representations.shape[0]
+
+    {nogil_block}
+
+        user_repr = <flt *>malloc(sizeof(flt) * (lightfm.no_components + 1))
+
+        for i in {range_block}(n_users):
+
+            compute_representation(user_features,
+                                   lightfm.user_features,
+                                   lightfm.user_biases,
+                                   lightfm,
+                                   user_ids[i],
+                                   lightfm.user_scale,
+                                   user_repr)
+            for factor_dim in range(lightfm.no_components + 1):
+                representations[i, factor_dim] = user_repr[factor_dim]
+
+        free(user_repr)
+
+
+def compute_item_representations_all(
+                                CSRMatrix item_features,
+                                int[::1] item_ids,
+                                flt[:, ::1] representations,
+                                FastLightFM lightfm,
+                                int num_threads):
+    """
+    Computes the representations of all items.
+    Last dim is the bias
+    """
+
+    cdef int i, factor_dim, n_items
+    cdef flt *item_repr
+
+    n_items = representations.shape[0]
+
+    {nogil_block}
+
+        item_repr = <flt *>malloc(sizeof(flt) * (lightfm.no_components + 1))
+
+        for i in {range_block}(n_items):
+
+            compute_representation(item_features,
+                                   lightfm.item_features,
+                                   lightfm.item_biases,
+                                   lightfm,
+                                   item_ids[i],
+                                   lightfm.item_scale,
+                                   item_repr)
+            for factor_dim in range(lightfm.no_components + 1):
+                representations[i, factor_dim] = item_repr[factor_dim]
+
+        free(item_repr)
+
+        
 # Expose test functions
 def __test_in_positives(int row, int col, CSRMatrix mat):
 
