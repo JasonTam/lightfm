@@ -571,7 +571,8 @@ class LightFM(object):
                          self.user_alpha,
                          num_threads)
 
-    def predict(self, user_ids, item_ids, item_features=None, user_features=None, num_threads=1):
+    def predict(self, user_ids, item_ids, item_features=None, user_features=None, num_threads=1,
+                use_precomputed=False, user_reprs=None, item_reprs=None):
         """
         Compute the recommendation score for user-item pairs.
 
@@ -628,12 +629,16 @@ class LightFM(object):
                         item_ids,
                         predictions,
                         lightfm_data,
-                        num_threads)
+                        num_threads,
+                        use_precomputed,
+                        user_reprs,
+                        item_reprs)
 
         return predictions
 
     def predict_rank(self, test_interactions, train_interactions=None,
-                     item_features=None, user_features=None, num_threads=1):
+                     item_features=None, user_features=None, num_threads=1,
+                     use_precomputed=False, user_reprs=None, item_reprs=None):
         """
         Predict the rank of selected interactions. Computes recommendation rankings across all items
         for every user in interactions and calculates the rank of all non-zero entries
@@ -707,7 +712,10 @@ class LightFM(object):
                       CSRMatrix(train_interactions),
                       ranks.data,
                       lightfm_data,
-                      num_threads)
+                      num_threads,
+                      use_precomputed,
+                      user_reprs,
+                      item_reprs)
 
         return ranks
 

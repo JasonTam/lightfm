@@ -1233,12 +1233,15 @@ def predict_lightfm(CSRMatrix item_features,
                     int[::1] item_ids,
                     double[::1] predictions,
                     FastLightFM lightfm,
-                    int num_threads):
+                    int num_threads,
+                    bint use_precomputed,
+                    flt[:, ::1] user_reprs,
+                    flt[:, ::1] item_reprs):
     """
     Generate predictions.
     """
 
-    cdef int i, no_examples
+    cdef int i, no_examples, factor_dim
     cdef flt *user_repr
     cdef flt *it_repr
 
@@ -1250,21 +1253,25 @@ def predict_lightfm(CSRMatrix item_features,
         it_repr = <flt *>malloc(sizeof(flt) * (lightfm.no_components + 1))
 
         for i in {range_block}(no_examples):
-
-            compute_representation(user_features,
-                                   lightfm.user_features,
-                                   lightfm.user_biases,
-                                   lightfm,
-                                   user_ids[i],
-                                   lightfm.user_scale,
-                                   user_repr)
-            compute_representation(item_features,
-                                   lightfm.item_features,
-                                   lightfm.item_biases,
-                                   lightfm,
-                                   item_ids[i],
-                                   lightfm.item_scale,
-                                   it_repr)
+            if use_precomputed:
+              for factor_dim in {range_block}(lightfm.no_components + 1):
+                user_repr[factor_dim] = user_reprs[user_ids[i], factor_dim]
+                it_repr[factor_dim] = item_reprs[item_ids[i], factor_dim]
+            else:
+              compute_representation(user_features,
+                                     lightfm.user_features,
+                                     lightfm.user_biases,
+                                     lightfm,
+                                     user_ids[i],
+                                     lightfm.user_scale,
+                                     user_repr)
+              compute_representation(item_features,
+                                     lightfm.item_features,
+                                     lightfm.item_biases,
+                                     lightfm,
+                                     item_ids[i],
+                                     lightfm.item_scale,
+                                     it_repr)
 
             predictions[i] = compute_prediction_from_repr(user_repr,
                                                           it_repr,
@@ -1280,11 +1287,14 @@ def predict_ranks(CSRMatrix item_features,
                   CSRMatrix train_interactions,
                   flt[::1] ranks,
                   FastLightFM lightfm,
-                  int num_threads):
+                  int num_threads,
+                  bint use_precomputed,
+                  flt[:, ::1] user_reprs,
+                  flt[:, ::1] item_reprs):
     """
     """
 
-    cdef int i, j, user_id, item_id, predictions_size, row_start, row_stop
+    cdef int i, j, user_id, item_id, predictions_size, row_start, row_stop, factor_dim
     cdef flt *user_repr
     cdef flt *it_repr
     cdef flt *predictions
@@ -1315,13 +1325,17 @@ def predict_ranks(CSRMatrix item_features,
                 # No test interactions for this user
                 continue
 
-            compute_representation(user_features,
-                                   lightfm.user_features,
-                                   lightfm.user_biases,
-                                   lightfm,
-                                   user_id,
-                                   lightfm.user_scale,
-                                   user_repr)
+            if use_precomputed:
+              for factor_dim in {range_block}(lightfm.no_components + 1):
+                user_repr[factor_dim] = user_reprs[user_id, factor_dim]
+            else:
+              compute_representation(user_features,
+                                     lightfm.user_features,
+                                     lightfm.user_biases,
+                                     lightfm,
+                                     user_id,
+                                     lightfm.user_scale,
+                                     user_repr)
 
             # Compute predictions for the items whose
             # ranks we want to know
@@ -1329,13 +1343,17 @@ def predict_ranks(CSRMatrix item_features,
 
                 item_id = test_interactions.indices[row_start + i]
 
-                compute_representation(item_features,
-                                       lightfm.item_features,
-                                       lightfm.item_biases,
-                                       lightfm,
-                                       item_id,
-                                       lightfm.item_scale,
-                                       it_repr)
+                if use_precomputed:
+                  for factor_dim in range(lightfm.no_components + 1):
+                    it_repr[factor_dim] = item_reprs[item_id, factor_dim]
+                else:
+                  compute_representation(item_features,
+                                         lightfm.item_features,
+                                         lightfm.item_biases,
+                                         lightfm,
+                                         item_id,
+                                         lightfm.item_scale,
+                                         it_repr)
 
                 item_ids[i] = item_id
                 predictions[i] = compute_prediction_from_repr(user_repr,
@@ -1350,13 +1368,17 @@ def predict_ranks(CSRMatrix item_features,
                     # This depends on how we want to evaluate (so it's not necessary)
                     continue
 
-                compute_representation(item_features,
-                                       lightfm.item_features,
-                                       lightfm.item_biases,
-                                       lightfm,
-                                       item_id,
-                                       lightfm.item_scale,
-                                       it_repr)
+                if use_precomputed:
+                  for factor_dim in range(lightfm.no_components + 1):
+                    it_repr[factor_dim] = item_reprs[item_id, factor_dim]
+                else:
+                  compute_representation(item_features,
+                                         lightfm.item_features,
+                                         lightfm.item_biases,
+                                         lightfm,
+                                         item_id,
+                                         lightfm.item_scale,
+                                         it_repr)
                 prediction = compute_prediction_from_repr(user_repr,
                                                           it_repr,
                                                           lightfm.no_components)
