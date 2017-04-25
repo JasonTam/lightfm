@@ -592,6 +592,12 @@ class LightFM(object):
         num_threads: int, optional
              Number of parallel computation threads to use. Should
              not be higher than the number of physical cores.
+        use_precomputed: bool, optional
+             Whether to use precomputed representations or not
+        user_reprs: array of shape [n_users, n_factors + 1]
+             Precomputed user representations
+        item_reprs: array of shape [n_items, n_factors + 1]
+             Precomputed item representations
 
         Returns
         -------
@@ -613,18 +619,24 @@ class LightFM(object):
         n_users = user_ids.max() + 1
         n_items = item_ids.max() + 1
 
-        (user_features,
-         item_features) = self._construct_feature_matrices(n_users,
-                                                           n_items,
-                                                           user_features,
-                                                           item_features)
+        if not use_precomputed:
+            (user_features,
+             item_features) = self._construct_feature_matrices(n_users,
+                                                               n_items,
+                                                               user_features,
+                                                               item_features)
+            item_features = CSRMatrix(item_features)
+            user_features = CSRMatrix(user_features)
+        else:
+            item_features = None
+            user_features = None
 
         lightfm_data = self._get_lightfm_data()
 
         predictions = np.empty(len(user_ids), dtype=np.float64)
 
-        predict_lightfm(CSRMatrix(item_features),
-                        CSRMatrix(user_features),
+        predict_lightfm(item_features,
+                        user_features,
                         user_ids,
                         item_ids,
                         predictions,
@@ -664,6 +676,12 @@ class LightFM(object):
         num_threads: int, optional
              Number of parallel computation threads to use. Should
              not be higher than the number of physical cores.
+        use_precomputed: bool, optional
+             Whether to use precomputed representations or not
+        user_reprs: array of shape [n_users, n_factors + 1]
+             Precomputed user representations
+        item_reprs: array of shape [n_items, n_factors + 1]
+             Precomputed item representations
 
         Returns
         -------
@@ -677,17 +695,24 @@ class LightFM(object):
 
         n_users, n_items = test_interactions.shape
 
-        (user_features,
-         item_features) = self._construct_feature_matrices(n_users,
-                                                           n_items,
-                                                           user_features,
-                                                           item_features)
+        if not use_precomputed:
+            (user_features,
+             item_features) = self._construct_feature_matrices(n_users,
+                                                               n_items,
+                                                               user_features,
+                                                               item_features)
 
-        if not item_features.shape[1] == self.item_embeddings.shape[0]:
-            raise ValueError('Incorrect number of features in item_features')
+            if not item_features.shape[1] == self.item_embeddings.shape[0]:
+                raise ValueError('Incorrect number of features in item_features')
 
-        if not user_features.shape[1] == self.user_embeddings.shape[0]:
-            raise ValueError('Incorrect number of features in user_features')
+            if not user_features.shape[1] == self.user_embeddings.shape[0]:
+                raise ValueError('Incorrect number of features in user_features')
+
+            item_features = CSRMatrix(item_features)
+            user_features = CSRMatrix(user_features)
+        else:
+            item_features = None
+            user_features = None
 
         test_interactions = test_interactions.tocsr()
         test_interactions = self._to_cython_dtype(test_interactions)
@@ -706,8 +731,8 @@ class LightFM(object):
 
         lightfm_data = self._get_lightfm_data()
 
-        predict_ranks(CSRMatrix(item_features),
-                      CSRMatrix(user_features),
+        predict_ranks(item_features,
+                      user_features,
                       CSRMatrix(test_interactions),
                       CSRMatrix(train_interactions),
                       ranks.data,
