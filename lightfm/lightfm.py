@@ -236,6 +236,9 @@ class LightFM(object):
         if self.item_embeddings is not None:
             assert self.item_embeddings.shape[0] >= item_features.shape[1]
 
+        user_features = self._to_cython_dtype(user_features)
+        item_features = self._to_cython_dtype(item_features)
+
         return user_features, item_features
 
     def _get_positives_lookup_matrix(self, interactions):
@@ -452,8 +455,6 @@ class LightFM(object):
                                                            user_features,
                                                            item_features)
 
-        user_features = self._to_cython_dtype(user_features)
-        item_features = self._to_cython_dtype(item_features)
         sample_weight = (self._to_cython_dtype(sample_weight)
                          if sample_weight is not None else
                          np.ones(interactions.getnnz(),
@@ -570,7 +571,8 @@ class LightFM(object):
                          self.user_alpha,
                          num_threads)
 
-    def predict(self, user_ids, item_ids, item_features=None, user_features=None, num_threads=1):
+    def predict(self, user_ids, item_ids, item_features=None, user_features=None, num_threads=1,
+                use_precomputed=False, user_reprs=None, item_reprs=None):
         """
         Compute the recommendation score for user-item pairs.
 
@@ -590,6 +592,12 @@ class LightFM(object):
         num_threads: int, optional
              Number of parallel computation threads to use. Should
              not be higher than the number of physical cores.
+        use_precomputed: bool, optional
+             Whether to use precomputed representations or not
+        user_reprs: array of shape [n_users, n_factors + 1]
+             Precomputed user representations
+        item_reprs: array of shape [n_items, n_factors + 1]
+             Precomputed item representations
 
         Returns
         -------
@@ -611,31 +619,38 @@ class LightFM(object):
         n_users = user_ids.max() + 1
         n_items = item_ids.max() + 1
 
-        (user_features,
-         item_features) = self._construct_feature_matrices(n_users,
-                                                           n_items,
-                                                           user_features,
-                                                           item_features)
-
-        user_features = self._to_cython_dtype(user_features)
-        item_features = self._to_cython_dtype(item_features)
+        if not use_precomputed:
+            (user_features,
+             item_features) = self._construct_feature_matrices(n_users,
+                                                               n_items,
+                                                               user_features,
+                                                               item_features)
+            item_features = CSRMatrix(item_features)
+            user_features = CSRMatrix(user_features)
+        else:
+            item_features = None
+            user_features = None
 
         lightfm_data = self._get_lightfm_data()
 
         predictions = np.empty(len(user_ids), dtype=np.float64)
 
-        predict_lightfm(CSRMatrix(item_features),
-                        CSRMatrix(user_features),
+        predict_lightfm(item_features,
+                        user_features,
                         user_ids,
                         item_ids,
                         predictions,
                         lightfm_data,
-                        num_threads)
+                        num_threads,
+                        use_precomputed,
+                        user_reprs,
+                        item_reprs)
 
         return predictions
 
     def predict_rank(self, test_interactions, train_interactions=None,
-                     item_features=None, user_features=None, num_threads=1):
+                     item_features=None, user_features=None, num_threads=1,
+                     use_precomputed=False, user_reprs=None, item_reprs=None):
         """
         Predict the rank of selected interactions. Computes recommendation rankings across all items
         for every user in interactions and calculates the rank of all non-zero entries
@@ -661,6 +676,12 @@ class LightFM(object):
         num_threads: int, optional
              Number of parallel computation threads to use. Should
              not be higher than the number of physical cores.
+        use_precomputed: bool, optional
+             Whether to use precomputed representations or not
+        user_reprs: array of shape [n_users, n_factors + 1]
+             Precomputed user representations
+        item_reprs: array of shape [n_items, n_factors + 1]
+             Precomputed item representations
 
         Returns
         -------
@@ -674,17 +695,24 @@ class LightFM(object):
 
         n_users, n_items = test_interactions.shape
 
-        (user_features,
-         item_features) = self._construct_feature_matrices(n_users,
-                                                           n_items,
-                                                           user_features,
-                                                           item_features)
+        if not use_precomputed:
+            (user_features,
+             item_features) = self._construct_feature_matrices(n_users,
+                                                               n_items,
+                                                               user_features,
+                                                               item_features)
 
-        if not item_features.shape[1] == self.item_embeddings.shape[0]:
-            raise ValueError('Incorrect number of features in item_features')
+            if not item_features.shape[1] == self.item_embeddings.shape[0]:
+                raise ValueError('Incorrect number of features in item_features')
 
-        if not user_features.shape[1] == self.user_embeddings.shape[0]:
-            raise ValueError('Incorrect number of features in user_features')
+            if not user_features.shape[1] == self.user_embeddings.shape[0]:
+                raise ValueError('Incorrect number of features in user_features')
+
+            item_features = CSRMatrix(item_features)
+            user_features = CSRMatrix(user_features)
+        else:
+            item_features = None
+            user_features = None
 
         test_interactions = test_interactions.tocsr()
         test_interactions = self._to_cython_dtype(test_interactions)
@@ -703,13 +731,16 @@ class LightFM(object):
 
         lightfm_data = self._get_lightfm_data()
 
-        predict_ranks(CSRMatrix(item_features),
-                      CSRMatrix(user_features),
+        predict_ranks(item_features,
+                      user_features,
                       CSRMatrix(test_interactions),
                       CSRMatrix(train_interactions),
                       ranks.data,
                       lightfm_data,
-                      num_threads)
+                      num_threads,
+                      use_precomputed,
+                      user_reprs,
+                      item_reprs)
 
         return ranks
 
